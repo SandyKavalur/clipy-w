@@ -7,6 +7,7 @@ use crate::config::{
 use crate::history::{Entry, History};
 use crate::snippet_editor;
 use crate::snippets::SnippetStore;
+use crate::startup;
 use crate::theme;
 use once_cell::sync::Lazy;
 use std::sync::atomic::{AtomicIsize, Ordering};
@@ -30,6 +31,7 @@ enum MenuAction {
     HistoryPage(usize),
     SnippetFolder(usize),
     EditSnippets,
+    ToggleStartup,
 }
 
 struct MenuRow {
@@ -47,6 +49,7 @@ struct MenuLayout {
 struct PopupState {
     entries: Vec<Entry>,
     snippets: Arc<Mutex<SnippetStore>>,
+    startup_enabled: bool,
     selected_row: usize,
     selected_item: usize,
     item_scroll_start: usize,
@@ -63,6 +66,7 @@ static ITEMS_WINDOW: AtomicIsize = AtomicIsize::new(0);
 /// Must be called from a thread with a message pump.
 pub unsafe fn show(history: &History, snippets: Arc<Mutex<SnippetStore>>) -> Result<()> {
     let entries = history.recent(MAX_STORED);
+    let startup_enabled = startup::is_enabled().unwrap_or(false);
     let existing = ROOT_WINDOW.load(Ordering::Acquire);
     if existing != 0 {
         let hwnd = HWND(existing as _);
@@ -70,6 +74,7 @@ pub unsafe fn show(history: &History, snippets: Arc<Mutex<SnippetStore>>) -> Res
             if let Some(state) = STATE.lock().unwrap().as_mut() {
                 state.entries = entries;
                 state.snippets = snippets;
+                state.startup_enabled = startup_enabled;
             }
             let _ = InvalidateRect(Some(hwnd), None, true);
             let items = ITEMS_WINDOW.load(Ordering::Acquire);
@@ -85,6 +90,7 @@ pub unsafe fn show(history: &History, snippets: Arc<Mutex<SnippetStore>>) -> Res
     *STATE.lock().unwrap() = Some(PopupState {
         entries,
         snippets,
+        startup_enabled,
         selected_row: 0,
         selected_item: 0,
         item_scroll_start: 0,
@@ -190,6 +196,11 @@ fn menu_layout(state: &PopupState) -> MenuLayout {
     }
     rows.push(MenuRow {
         action: MenuAction::EditSnippets,
+        top,
+    });
+    top += POPUP_ROW + 4;
+    rows.push(MenuRow {
+        action: MenuAction::ToggleStartup,
         top,
     });
     MenuLayout {
@@ -362,6 +373,26 @@ unsafe fn open_child_window(parent: HWND, action: MenuAction) -> Result<()> {
 
 unsafe fn open_action(parent: HWND, action: MenuAction) {
     match action {
+        MenuAction::ToggleStartup => {
+            let enabled = STATE
+                .lock()
+                .unwrap()
+                .as_ref()
+                .map(|state| !state.startup_enabled);
+            if let Some(enabled) = enabled {
+                match startup::set_enabled(enabled) {
+                    Ok(()) => {
+                        if let Some(state) = STATE.lock().unwrap().as_mut() {
+                            state.startup_enabled = enabled;
+                        }
+                        let _ = InvalidateRect(Some(parent), None, true);
+                    }
+                    Err(error) => {
+                        eprintln!("[Clipy-W] could not update startup setting: {error}");
+                    }
+                }
+            }
+        }
         MenuAction::EditSnippets => {
             let store = STATE
                 .lock()
@@ -570,7 +601,16 @@ unsafe fn paint_root(hdc: HDC) {
     );
 
     let folder_start = layout.page_count;
-    let edit_index = layout.rows.len() - 1;
+    let edit_index = layout
+        .rows
+        .iter()
+        .position(|row| matches!(row.action, MenuAction::EditSnippets))
+        .unwrap();
+    let startup_index = layout
+        .rows
+        .iter()
+        .position(|row| matches!(row.action, MenuAction::ToggleStartup))
+        .unwrap();
     for index in folder_start..edit_index {
         let row = &layout.rows[index];
         let label = match row.action {
@@ -596,6 +636,20 @@ unsafe fn paint_root(hdc: HDC) {
         edit_row.top,
         edit_index == state.selected_row,
         "Edit Snippets...",
+        RANGE_WIDTH,
+    );
+
+    let startup_row = &layout.rows[startup_index];
+    let startup_label = if state.startup_enabled {
+        "[x] Start at sign-in"
+    } else {
+        "[ ] Start at sign-in"
+    };
+    draw_row(
+        hdc,
+        startup_row.top,
+        startup_index == state.selected_row,
+        startup_label,
         RANGE_WIDTH,
     );
 }

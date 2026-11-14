@@ -11,6 +11,7 @@ mod history;
 mod popup;
 mod snippet_editor;
 mod snippets;
+mod startup;
 mod theme;
 
 use std::sync::{Arc, Mutex};

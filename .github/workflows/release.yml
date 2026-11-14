@@ -1,0 +1,48 @@
+name: Windows installer release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      RUSTFLAGS: -C target-feature=+crt-static
+      CARGO_TERM_COLOR: always
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Run tests
+        run: cargo test --release --target x86_64-pc-windows-msvc
+
+      - name: Build Clipy-W
+        run: cargo build --release --target x86_64-pc-windows-msvc
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress --yes
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          $compiler = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          & $compiler "/DAppVersion=$version" "installer\clipy-w.iss"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: target/installer/Clipy-W-Setup-*-x64.exe
