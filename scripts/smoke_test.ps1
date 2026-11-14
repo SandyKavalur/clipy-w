@@ -1,21 +1,21 @@
-# Smoke test for ClipYRS in test mode (F12 hotkey).
+# Smoke test for Clipy-W in test mode (F9 hotkey).
 # 1. Start app in test mode
 # 2. Seed clipboard with distinct values (builds history)
-# 3. Press F12 to open the popup
+# 3. Press F9 to open the popup
 # 4. Screenshot so the popup can be verified visually
 param(
     [int]$Seconds = 2
 )
 $ErrorActionPreference = "Stop"
 
-$exe = Join-Path $PSScriptRoot "..\target\release\clipyrs.exe"
+$exe = Join-Path $PSScriptRoot "..\target\release\clipy-w.exe"
 $shot = Join-Path $PSScriptRoot "..\smoke_popup.png"
 
 # Kill any previous instance.
-Get-Process -Name clipyrs -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process -Name clipy-w,clipyrs -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Milliseconds 500
 
-$env:CLIPYRS_TEST = "1"
+$env:CLIPY_W_TEST = "1"
 $proc = Start-Process -FilePath $exe -PassThru
 Write-Host "started pid $($proc.Id)"
 Start-Sleep -Seconds $Seconds
@@ -27,7 +27,7 @@ Start-Sleep -Seconds $Seconds
 }
 Write-Host "seeded clipboard history"
 
-# F12 opens the popup.  SendKeys to the active window is unreliable; use the
+# F9 opens the popup. SendKeys to the active window is unreliable; use the
 # low-level keyboard API via P/Invoke so it lands regardless of focus.
 Add-Type @"
 using System;

@@ -13,7 +13,7 @@ use windows::Win32::UI::Controls::DRAWITEMSTRUCT;
 use windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow;
 use windows::Win32::UI::WindowsAndMessaging::*;
 
-const CLASS_NAME: &str = "ClipYRS_SnippetEditor";
+const CLASS_NAME: &str = "ClipyW_SnippetEditor";
 const FOLDER_COMBO: u16 = 101;
 const FOLDER_NAME: u16 = 102;
 const ADD_FOLDER: u16 = 103;
@@ -139,7 +139,14 @@ unsafe extern "system" fn editor_wndproc(
             LRESULT(0)
         }
         WM_DRAWITEM => draw_button(_lparam),
-        WM_ERASEBKGND if theme::glass_enabled() => LRESULT(1),
+        WM_ERASEBKGND => {
+            let hdc = HDC(wparam.0 as _);
+            let mut rect = RECT::default();
+            if GetClientRect(hwnd, &mut rect).is_ok() {
+                FillRect(hdc, &rect, theme::background_brush());
+            }
+            LRESULT(1)
+        }
         WM_CTLCOLORSTATIC => {
             let hdc = HDC(wparam.0 as _);
             SetTextColor(hdc, theme::MUTED_TEXT);

@@ -160,7 +160,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("clipyrs-test-{}", nanos));
+        let dir = std::env::temp_dir().join(format!("clipy-w-test-{}", nanos));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("test.db");
         let db = sled::open(&path).unwrap();

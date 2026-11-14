@@ -1,9 +1,9 @@
-//! ClipYRS — a Clipy-style clipboard manager for Windows.
+//! Clipy-W — a Clipy-style clipboard manager for Windows.
 //!
 //! Registers a global Ctrl+Shift+H hotkey.  Pressing it pops up a window with
 //! the ten most recent clipboard entries; pick one to paste it back into the
 //! active application.  Clipboard changes are captured in the background and
-//! persisted to a sled database under `%APPDATA%\clipyrs\history.db`.
+//! persisted to a sled database under `%APPDATA%\clipy-w\history.db`.
 
 mod clipboard;
 mod config;
@@ -27,27 +27,41 @@ struct AppState {
 }
 
 fn main() -> Result<()> {
-    let debug = std::env::var_os("CLIPYRS_DEBUG").is_some();
+    let debug = std::env::var_os("CLIPY_W_DEBUG").is_some();
     let log = |msg: &str| {
         if debug {
-            eprintln!("[clipyrs] {}", msg);
+            eprintln!("[clipy-w] {}", msg);
         }
     };
 
-    let _instance_mutex = unsafe {
+    let _legacy_mutex = unsafe {
         let mutex = CreateMutexW(None, true, wide("Local\\ClipYRS_SingleInstance"))?;
         if GetLastError() == ERROR_ALREADY_EXISTS {
-            eprintln!("[clipyrs] another instance is already running.");
+            eprintln!("[Clipy-W] close the previous ClipYRS instance before launching this version.");
             return Ok(());
         }
         mutex
     };
 
+    let _instance_mutex = unsafe {
+        let mutex = CreateMutexW(None, true, wide("Local\\ClipyW_SingleInstance"))?;
+        if GetLastError() == ERROR_ALREADY_EXISTS {
+            eprintln!("[Clipy-W] another instance is already running.");
+            return Ok(());
+        }
+        mutex
+    };
+
+    if let Err(error) = config::migrate_legacy_data() {
+        eprintln!("[Clipy-W] failed to migrate existing ClipYRS data: {error}");
+        std::process::exit(1);
+    }
+
     let history = match history::History::open() {
         Ok(history) => Arc::new(history),
         Err(error) => {
-            eprintln!("[clipyrs] failed to open history database: {error}");
-            eprintln!("[clipyrs] another process may be using it; close it and try again.");
+            eprintln!("[Clipy-W] failed to open history database: {error}");
+            eprintln!("[Clipy-W] another process may be using it; close it and try again.");
             std::process::exit(1);
         }
     };
@@ -55,7 +69,7 @@ fn main() -> Result<()> {
     let snippets = match snippets::SnippetStore::load() {
         Ok(store) => Arc::new(Mutex::new(store)),
         Err(error) => {
-            eprintln!("[clipyrs] failed to load snippets: {error}");
+            eprintln!("[Clipy-W] failed to load snippets: {error}");
             Arc::new(Mutex::new(snippets::SnippetStore::default()))
         }
     };
@@ -97,16 +111,44 @@ fn main() -> Result<()> {
 
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, Arc::into_raw(app_state) as _);
 
-        // Ctrl + Shift + H (test mode: F12).
-        let test_mode = std::env::var_os("CLIPYRS_TEST").is_some();
-        let (modifiers, vk) = if test_mode {
-            (HOT_KEY_MODIFIERS(0), config::TEST_HOTKEY_VK)
+        // Prefer Win+Shift+V, falling back to Ctrl+Shift+V if unavailable.
+        let test_mode = std::env::var_os("CLIPY_W_TEST").is_some();
+        let hotkey_result = if test_mode {
+            RegisterHotKey(
+                Some(hwnd),
+                config::HOTKEY_ID,
+                HOT_KEY_MODIFIERS(0),
+                config::TEST_HOTKEY_VK,
+            )
         } else {
-            (MOD_CONTROL | MOD_SHIFT, 0x48) // 'H'
+            match RegisterHotKey(
+                Some(hwnd),
+                config::HOTKEY_ID,
+                MOD_WIN | MOD_SHIFT,
+                config::HOTKEY_VK,
+            ) {
+                Ok(()) => {
+                    log("Win+Shift+V hotkey registered");
+                    Ok(())
+                }
+                Err(error) => {
+                    log(&format!("Win+Shift+V unavailable: {error}; trying Ctrl+Shift+V"));
+                    let fallback = RegisterHotKey(
+                        Some(hwnd),
+                        config::HOTKEY_ID,
+                        MOD_CONTROL | MOD_SHIFT,
+                        config::HOTKEY_VK,
+                    );
+                    if fallback.is_ok() {
+                        log("Ctrl+Shift+V fallback hotkey registered");
+                    }
+                    fallback
+                }
+            }
         };
-        if let Err(e) = RegisterHotKey(Some(hwnd), config::HOTKEY_ID, modifiers, vk) {
+        if let Err(e) = hotkey_result {
             log(&format!("RegisterHotKey failed: {:?}", e));
-        } else {
+        } else if test_mode {
             log("hotkey registered");
         }
 
@@ -121,7 +163,7 @@ fn main() -> Result<()> {
 
         // Manual test hook: show the popup once and exit, without needing the
         // global hotkey.  Lets the UI be exercised headlessly.
-        if std::env::var_os("CLIPYRS_SHOW").is_some() {
+        if std::env::var_os("CLIPY_W_SHOW").is_some() {
             log("manual show requested");
             let _ = popup::show(&history, snippets.clone());
             log("popup closed, exiting");
@@ -159,14 +201,14 @@ unsafe extern "system" fn main_wndproc(
 ) -> LRESULT {
     match msg {
         WM_HOTKEY if wparam.0 == config::HOTKEY_ID as usize => {
-            if std::env::var_os("CLIPYRS_DEBUG").is_some() {
-                eprintln!("[clipyrs] WM_HOTKEY received");
+            if std::env::var_os("CLIPY_W_DEBUG").is_some() {
+                eprintln!("[clipy-w] WM_HOTKEY received");
             }
             let ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *const AppState;
             if !ptr.is_null() {
                 let state = &*ptr;
                 if let Err(error) = popup::show(&state.history, state.snippets.clone()) {
-                    eprintln!("[clipyrs] failed to show popup: {error}");
+                    eprintln!("[Clipy-W] failed to show popup: {error}");
                 }
             }
             LRESULT(0)

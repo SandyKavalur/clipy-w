@@ -23,6 +23,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 const ERROR_CLASS_ALREADY_EXISTS: u32 = 1410;
+const SNIPPET_TOP_MARGIN: i32 = 8;
 
 #[derive(Clone, Copy)]
 enum MenuAction {
@@ -91,7 +92,7 @@ pub unsafe fn show(history: &History, snippets: Arc<Mutex<SnippetStore>>) -> Res
     });
 
     let instance = GetModuleHandleW(None)?;
-    let class = wide("ClipYRS_Popup");
+    let class = wide("ClipyW_Popup");
     let wc = WNDCLASSW {
         style: CS_HREDRAW | CS_VREDRAW,
         lpfnWndProc: Some(popup_wndproc),
@@ -108,7 +109,7 @@ pub unsafe fn show(history: &History, snippets: Arc<Mutex<SnippetStore>>) -> Res
     let hwnd = CreateWindowExW(
         WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
         class,
-        wide("ClipYRS"),
+        wide("Clipy-W"),
         WS_POPUP,
         CW_USEDEFAULT,
         CW_USEDEFAULT,
@@ -142,6 +143,24 @@ fn page_bounds(entry_count: usize, page: usize) -> Option<(usize, usize)> {
         return None;
     }
     Some((start, (start + VISIBLE_ITEMS).min(entry_count)))
+}
+
+fn child_header_height(action: Option<MenuAction>) -> i32 {
+    if matches!(action, Some(MenuAction::HistoryPage(_))) {
+        POPUP_HEADER
+    } else {
+        0
+    }
+}
+
+fn child_content_top(action: Option<MenuAction>) -> i32 {
+    if child_header_height(action) > 0 {
+        POPUP_HEADER
+    } else if matches!(action, Some(MenuAction::SnippetFolder(_))) {
+        SNIPPET_TOP_MARGIN
+    } else {
+        0
+    }
 }
 
 fn menu_layout(state: &PopupState) -> MenuLayout {
@@ -291,12 +310,13 @@ unsafe fn open_child_window(parent: HWND, action: MenuAction) -> Result<()> {
     }
 
     let instance = GetModuleHandleW(None)?;
-    let class = wide("ClipYRS_Popup");
-    let height = popup_height(item_count.max(1));
+    let class = wide("ClipyW_Popup");
+    let content_top = child_content_top(Some(action));
+    let height = popup_height(item_count.max(1)) - (POPUP_HEADER - content_top);
     let hwnd = CreateWindowExW(
         WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
         class,
-        wide("ClipYRS items"),
+        wide("Clipy-W items"),
         WS_POPUP,
         CW_USEDEFAULT,
         CW_USEDEFAULT,
@@ -351,13 +371,13 @@ unsafe fn open_action(parent: HWND, action: MenuAction) {
             close_popup_windows();
             if let Some(store) = store {
                 if let Err(error) = snippet_editor::show(store) {
-                    eprintln!("[clipyrs] failed to open snippet editor: {error}");
+                    eprintln!("[Clipy-W] failed to open snippet editor: {error}");
                 }
             }
         }
         _ => {
             if let Err(error) = open_child_window(parent, action) {
-                eprintln!("[clipyrs] failed to show popup items: {error}");
+                eprintln!("[Clipy-W] failed to show popup items: {error}");
             }
         }
     }
@@ -452,10 +472,10 @@ unsafe extern "system" fn popup_wndproc(
         }
         WM_LBUTTONDOWN => {
             let y = (lparam.0 as u16) as i32;
-            if y < POPUP_HEADER {
-                return LRESULT(0);
-            }
             if hwnd.0 as isize == ROOT_WINDOW.load(Ordering::Acquire) {
+                if y < POPUP_HEADER {
+                    return LRESULT(0);
+                }
                 let action = {
                     let mut guard = STATE.lock().unwrap();
                     guard.as_mut().and_then(|state| {
@@ -472,11 +492,20 @@ unsafe extern "system" fn popup_wndproc(
                     open_action(hwnd, action);
                 }
             } else {
-                let row = ((y - POPUP_HEADER) / POPUP_ROW).max(0) as usize;
-                let index = STATE.lock().unwrap().as_ref().and_then(|state| {
+                let state = STATE.lock().unwrap();
+                let header_height = state
+                    .as_ref()
+                    .map(|state| child_content_top(state.child))
+                    .unwrap_or(0);
+                if y < header_height {
+                    return LRESULT(0);
+                }
+                let row = ((y - header_height) / POPUP_ROW).max(0) as usize;
+                let index = state.as_ref().and_then(|state| {
                     let index = state.item_scroll_start + row;
                     (index < child_items(state).len()).then_some(index)
                 });
+                drop(state);
                 if let Some(index) = index {
                     choose_item(index);
                 }
@@ -577,10 +606,13 @@ unsafe fn paint_child(hdc: HDC) {
         return;
     };
     let items = child_items(state);
-    let header = child_header(state);
-    paint_header(hdc, &header, POPUP_WIDTH);
+    let content_top = child_content_top(state.child);
+    if child_header_height(state.child) > 0 {
+        let header = child_header(state);
+        paint_header(hdc, &header, POPUP_WIDTH);
+    }
     if items.is_empty() {
-        let _ = TextOutW(hdc, 12, POPUP_HEADER + 6, &wide_null("No snippets yet"));
+        let _ = TextOutW(hdc, 12, content_top + 6, &wide_null("No snippets yet"));
         return;
     }
     for (row, index) in (state.item_scroll_start..items.len().min(state.item_scroll_start + VISIBLE_ITEMS)).enumerate() {
@@ -595,7 +627,7 @@ unsafe fn paint_child(hdc: HDC) {
             _ if preview.is_empty() => title.clone(),
             _ => format!("{}: {}", title, preview),
         };
-        draw_row(hdc, POPUP_HEADER + row as i32 * POPUP_ROW, state.selected_item == index, &label, POPUP_WIDTH);
+        draw_row(hdc, content_top + row as i32 * POPUP_ROW, state.selected_item == index, &label, POPUP_WIDTH);
     }
 }
 
@@ -777,7 +809,7 @@ fn wide(text: &str) -> PCWSTR {
 
 #[cfg(test)]
 mod tests {
-    use super::{page_bounds, page_count};
+    use super::{child_content_top, child_header_height, page_bounds, page_count, MenuAction};
 
     #[test]
     fn full_history_splits_into_three_groups() {
@@ -792,5 +824,19 @@ mod tests {
         assert_eq!(page_count(12), 2);
         assert_eq!(page_bounds(12, 1), Some((10, 12)));
         assert_eq!(page_bounds(12, 2), None);
+    }
+
+    #[test]
+    fn snippet_windows_omit_the_header_but_history_windows_keep_it() {
+        assert_eq!(child_header_height(Some(MenuAction::SnippetFolder(0))), 0);
+        assert_eq!(child_content_top(Some(MenuAction::SnippetFolder(0))), 8);
+        assert_eq!(
+            child_header_height(Some(MenuAction::HistoryPage(0))),
+            crate::config::POPUP_HEADER
+        );
+        assert_eq!(
+            child_content_top(Some(MenuAction::HistoryPage(0))),
+            crate::config::POPUP_HEADER
+        );
     }
 }

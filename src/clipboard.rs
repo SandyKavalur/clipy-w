@@ -36,7 +36,7 @@ impl ClipboardMonitor {
         HISTORY_PTR.store(Arc::into_raw(history) as *mut History, Ordering::SeqCst);
 
         let instance = GetModuleHandleW(None)?;
-        let class = wide("ClipYRS_ClipMonitor");
+        let class = wide("ClipyW_ClipMonitor");
         let wc = WNDCLASSW {
             lpfnWndProc: Some(monitor_wndproc),
             hInstance: HINSTANCE(instance.0),
@@ -54,7 +54,7 @@ impl ClipboardMonitor {
         let hwnd = CreateWindowExW(
             WS_EX_NOACTIVATE,
             class,
-            wide("ClipYRS_Monitor"),
+            wide("ClipyW_Monitor"),
             WINDOW_STYLE::default(),
             0,
             0,

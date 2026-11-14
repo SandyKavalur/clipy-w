@@ -1,14 +1,17 @@
 //! Application configuration constants.
 
-use std::path::PathBuf;
+use std::io;
+use std::path::{Path, PathBuf};
 
 /// Display name of the application.
-pub const APP_NAME: &str = "ClipYRS";
+pub const APP_NAME: &str = "Clipy-W";
 
-/// Hotkey: Win + Shift + V (mirrors Clipy's Cmd+Shift+V on macOS).
 pub const HOTKEY_ID: i32 = 1;
 
-/// Virtual-key code of the test hotkey (F9), used when `CLIPYRS_TEST=1` is
+/// Primary hotkey: Win + Shift + V.
+pub const HOTKEY_VK: u32 = 0x56; // 'V'
+
+/// Virtual-key code of the test hotkey (F9), used when `CLIPY_W_TEST=1` is
 /// set so the app can be driven end-to-end without the real Windows key.
 /// F9 is used instead of F12 because F12 is claimed by another app on some
 /// machines (including the dev box).
@@ -43,35 +46,85 @@ pub fn popup_height(item_count: usize) -> i32 {
     POPUP_HEADER + (item_count.min(VISIBLE_ITEMS) as i32) * POPUP_ROW + 12
 }
 
-/// Path to the sled database file, e.g. `%APPDATA%\clipyrs\history.db`.
+/// Path to the sled database directory, e.g. `%APPDATA%\clipy-w\history.db`.
 pub fn db_path() -> PathBuf {
-    let mut p = std::env::var_os("APPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| dirs_data_dir());
-    p.push("clipyrs");
-    p.push("history.db");
-    p
+    data_dir().join("history.db")
 }
 
 /// Path to the persisted snippet folders.
 pub fn snippets_path() -> PathBuf {
-    let mut path = match std::env::var_os("APPDATA") {
-        Some(appdata) => PathBuf::from(appdata).join("clipyrs"),
-        None => std::env::var_os("USERPROFILE")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join(".clipyrs"),
-    };
-    path.push("snippets.json");
-    path
+    data_dir().join("snippets.json")
 }
 
-/// Fallback when APPDATA is missing: `%USERPROFILE%\.clipyrs`.
-fn dirs_data_dir() -> PathBuf {
-    let mut p = std::env::var_os("USERPROFILE")
+/// Move existing ClipYRS data into the renamed application's data directory.
+pub fn migrate_legacy_data() -> io::Result<()> {
+    migrate_data_dir(&legacy_data_dir(), &data_dir())
+}
+
+fn data_dir() -> PathBuf {
+    let base = std::env::var_os("APPDATA")
         .map(PathBuf::from)
+        .or_else(|| std::env::var_os("USERPROFILE").map(PathBuf::from))
         .unwrap_or_else(|| PathBuf::from("."));
-    p.push(".clipyrs");
-    p.push("history.db");
-    p
+    if std::env::var_os("APPDATA").is_some() {
+        base.join("clipy-w")
+    } else {
+        base.join(".clipy-w")
+    }
+}
+
+fn legacy_data_dir() -> PathBuf {
+    let base = std::env::var_os("APPDATA")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("USERPROFILE").map(PathBuf::from))
+        .unwrap_or_else(|| PathBuf::from("."));
+    if std::env::var_os("APPDATA").is_some() {
+        base.join("clipyrs")
+    } else {
+        base.join(".clipyrs")
+    }
+}
+
+fn migrate_data_dir(legacy: &Path, current: &Path) -> io::Result<()> {
+    if !legacy.exists() {
+        return Ok(());
+    }
+    if !current.exists() {
+        return std::fs::rename(legacy, current);
+    }
+
+    for name in ["history.db", "snippets.json"] {
+        let source = legacy.join(name);
+        let destination = current.join(name);
+        if source.exists() && !destination.exists() {
+            std::fs::rename(source, destination)?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::migrate_data_dir;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn migration_preserves_existing_history_and_snippets() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("clipy-w-migration-{unique}"));
+        let legacy = root.join("clipyrs");
+        let current = root.join("clipy-w");
+        std::fs::create_dir_all(legacy.join("history.db")).unwrap();
+        std::fs::write(legacy.join("snippets.json"), b"{}").unwrap();
+
+        migrate_data_dir(&legacy, &current).unwrap();
+
+        assert!(current.join("history.db").is_dir());
+        assert_eq!(std::fs::read(current.join("snippets.json")).unwrap(), b"{}");
+        assert!(!legacy.exists());
+        let _ = std::fs::remove_dir_all(root);
+    }
 }
