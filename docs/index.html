@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Clipy-W is a Windows clipboard manager with searchable-feeling history ranges and reusable snippet folders.">
+  <meta property="og:title" content="Clipy-W - Clipboard history for Windows">
+  <meta property="og:description" content="Keep your copied text and reusable snippets close at hand on Windows.">
+  <meta property="og:type" content="website">
+  <title>Clipy-W - Clipboard history for Windows</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #e8e8df;
+      --muted: #9da099;
+      --paper: #171a18;
+      --panel: #222623;
+      --panel-raised: #2b302c;
+      --line: #454b44;
+      --lime: #d3f36b;
+      --coral: #ff876f;
+      --content: 1120px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      background-color: var(--paper);
+      background-image: repeating-linear-gradient(0deg, transparent 0, transparent 39px, #ffffff08 40px), repeating-linear-gradient(90deg, transparent 0, transparent 39px, #ffffff08 40px);
+      color: var(--ink);
+      font-family: "DM Sans", "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+
+    a { color: inherit; }
+
+    .site-header, main, footer {
+      width: min(var(--content), calc(100% - 48px));
+      margin-inline: auto;
+    }
+
+    .site-header {
+      height: 76px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .wordmark {
+      color: var(--ink);
+      font-family: "Space Grotesk", "Segoe UI", sans-serif;
+      font-size: 19px;
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .wordmark span { color: var(--lime); }
+
+    .header-link {
+      color: var(--muted);
+      font-size: 14px;
+      text-decoration-thickness: 1px;
+      text-underline-offset: 4px;
+    }
+
+    .hero {
+      min-height: 565px;
+      display: grid;
+      grid-template-columns: minmax(0, .9fr) minmax(480px, 1.1fr);
+      align-items: center;
+      gap: 48px;
+      padding-block: 64px 78px;
+    }
+
+    .eyebrow, .section-kicker, .mock-label {
+      color: var(--lime);
+      font-family: "DM Mono", monospace;
+      font-size: 12px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    h1, h2, h3, p { margin-top: 0; }
+
+    h1 {
+      max-width: 520px;
+      margin-bottom: 20px;
+      font-family: "Space Grotesk", "Segoe UI", sans-serif;
+      font-size: clamp(48px, 6vw, 72px);
+      font-weight: 700;
+      line-height: 1.02;
+    }
+
+    .hero-copy {
+      max-width: 480px;
+      margin-bottom: 30px;
+      color: #b6bbb2;
+      font-size: 18px;
+    }
+
+    .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+
+    .button {
+      min-height: 48px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 0 19px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      font-size: 15px;
+      font-weight: 700;
+      text-decoration: none;
+      transition: transform 140ms ease, background-color 140ms ease;
+    }
+
+    .button:hover { transform: translateY(-2px); }
+    .button-primary { background: var(--lime); color: #20251a; }
+    .button-primary:hover { background: #e0ff88; }
+    .button-secondary { border-color: #697067; color: var(--ink); }
+    .button-secondary:hover { background: var(--panel); }
+
+    .release-note {
+      margin: 14px 0 0;
+      color: var(--muted);
+      font-family: "DM Mono", monospace;
+      font-size: 12px;
+    }
+
+    .preview-wrap { position: relative; padding: 18px 0 18px 18px; }
+
+    .preview-wrap::before {
+      position: absolute;
+      inset: 0 32px 0 0;
+      border: 1px solid #d3f36b55;
+      content: "";
+      transform: translate(-10px, 10px);
+    }
+
+    .mock-label { position: relative; margin-bottom: 12px; color: var(--muted); }
+
+    .mock-desktop {
+      position: relative;
+      display: grid;
+      grid-template-columns: 196px minmax(230px, 1fr);
+      gap: 7px;
+      align-items: start;
+    }
+
+    .menu, .submenu {
+      overflow: hidden;
+      border: 1px solid #59605a;
+      border-radius: 12px;
+      background: rgba(37, 41, 38, .96);
+      box-shadow: 0 18px 45px #0008;
+    }
+
+    .menu { padding: 9px 7px 8px; }
+    .submenu { margin-top: 39px; padding: 9px 7px; }
+
+    .mock-heading {
+      padding: 0 8px 7px;
+      border-bottom: 1px solid #4d534e;
+      color: #b8beb5;
+      font-size: 13px;
+    }
+
+    .mock-section {
+      padding: 8px 8px 3px;
+      color: #99a196;
+      font-size: 12px;
+    }
+
+    .mock-row {
+      min-height: 27px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      color: #e7e9e4;
+      font-size: 12px;
+    }
+
+    .mock-row.selected { background: #454b46; }
+    .mock-row small { color: #aab1a7; font-size: 11px; }
+    .mock-divider { height: 1px; margin: 5px 4px; background: #454b46; }
+
+    .snippet-row {
+      min-height: 30px;
+      padding: 5px 8px;
+      border-radius: 6px;
+      background: #454b46;
+      color: #f0f1ec;
+      font-size: 12px;
+    }
+
+    .preview-caption {
+      margin: 14px 0 0 18px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .feature-band {
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .features {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 36px;
+      padding-block: 52px;
+    }
+
+    .feature-number {
+      margin-bottom: 15px;
+      color: var(--coral);
+      font-family: "DM Mono", monospace;
+      font-size: 12px;
+    }
+
+    h2 {
+      margin-bottom: 10px;
+      font-family: "Space Grotesk", "Segoe UI", sans-serif;
+      font-size: 22px;
+    }
+
+    .feature p { max-width: 300px; margin-bottom: 0; color: var(--muted); font-size: 14px; }
+
+    .download {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 28px;
+      padding-block: 62px;
+    }
+
+    .download h2 { margin-bottom: 6px; font-size: 28px; }
+    .download p { margin-bottom: 0; color: var(--muted); }
+
+    footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      padding-block: 22px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    footer a { text-underline-offset: 3px; }
+
+    @media (max-width: 820px) {
+      .hero { grid-template-columns: 1fr; gap: 34px; padding-block: 58px; }
+      .hero-copy { max-width: 580px; }
+      .preview-wrap { max-width: 620px; }
+    }
+
+    @media (max-width: 560px) {
+      .site-header, main, footer { width: min(100% - 32px, var(--content)); }
+      .site-header { height: 64px; }
+      .header-link { font-size: 12px; }
+      .hero { min-height: 0; padding-block: 46px 58px; }
+      h1 { font-size: 48px; }
+      .hero-copy { font-size: 16px; }
+      .mock-desktop { grid-template-columns: minmax(140px, .75fr) minmax(150px, 1fr); gap: 5px; }
+      .menu { padding-inline: 5px; }
+      .mock-row, .snippet-row { font-size: 10px; }
+      .features { grid-template-columns: 1fr; gap: 28px; padding-block: 38px; }
+      .download { align-items: flex-start; flex-direction: column; padding-block: 42px; }
+      footer { flex-direction: column; gap: 8px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <a class="wordmark" href="#top" aria-label="Clipy-W home">clipy<span>-w</span></a>
+    <a class="header-link" href="https://github.com/SandyKavalur/clipy-w">View source on GitHub</a>
+  </header>
+
+  <main id="top">
+    <section class="hero" aria-labelledby="page-title">
+      <div>
+        <p class="eyebrow">A small memory for Windows</p>
+        <h1 id="page-title">Clipy-W</h1>
+        <p class="hero-copy">Your copied text, ready when you need it. Keep a short clipboard history, organize reusable snippets, and paste without breaking your flow.</p>
+        <div class="actions">
+          <a class="button button-primary" href="https://github.com/SandyKavalur/clipy-w/releases/latest">Download for Windows <span aria-hidden="true">&#8595;</span></a>
+          <a class="button button-secondary" href="https://github.com/SandyKavalur/clipy-w">Explore the source</a>
+        </div>
+        <p class="release-note">Windows x64 / Installer / No developer tools required</p>
+      </div>
+
+      <div class="preview-wrap" aria-label="Preview of the Clipy-W clipboard picker">
+        <p class="mock-label">THE CLIPBOARD PICKER</p>
+        <div class="mock-desktop">
+          <div class="menu">
+            <div class="mock-heading">History</div>
+            <div class="mock-row">1 - 10 <small>&#8250;</small></div>
+            <div class="mock-row">11 - 13 <small>&#8250;</small></div>
+            <div class="mock-divider"></div>
+            <div class="mock-section">Snippets</div>
+            <div class="mock-row selected">Writing <small>&#8250;</small></div>
+            <div class="mock-row">Development <small>&#8250;</small></div>
+            <div class="mock-divider"></div>
+            <div class="mock-row">Edit Snippets...</div>
+            <div class="mock-row">&#9744; Start at sign-in</div>
+          </div>
+          <div class="submenu">
+            <div class="snippet-row">1. A useful note to paste again</div>
+            <div class="mock-row">2. Reply template for email</div>
+            <div class="mock-row">3. Project link and details</div>
+          </div>
+        </div>
+        <p class="preview-caption">Open with Win + Shift + V</p>
+      </div>
+    </section>
+
+    <section class="feature-band" aria-label="Features">
+      <div class="features">
+        <article class="feature">
+          <p class="feature-number">01 / HISTORY</p>
+          <h2>Recent, not endless</h2>
+          <p>Keep up to 30 copied text items, grouped into easy-to-scan ranges of ten.</p>
+        </article>
+        <article class="feature">
+          <p class="feature-number">02 / SNIPPETS</p>
+          <h2>Your words on hand</h2>
+          <p>Put frequently used text into folders and edit it in the built-in snippet manager.</p>
+        </article>
+        <article class="feature">
+          <p class="feature-number">03 / LOCAL</p>
+          <h2>Yours to keep</h2>
+          <p>History and snippets stay in your Windows user profile. No account is needed.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="download" aria-labelledby="download-title">
+      <div>
+        <p class="section-kicker">CLIPY-W 1.0.0</p>
+        <h2 id="download-title">A little less retyping.</h2>
+        <p>Install per-user. Start from the Start Menu. Keep your clipboard close.</p>
+      </div>
+      <a class="button button-primary" href="https://github.com/SandyKavalur/clipy-w/releases/latest">Get the installer <span aria-hidden="true">&#8594;</span></a>
+    </section>
+  </main>
+
+  <footer>
+    <span>Clipy-W is open source and built for Windows.</span>
+    <a href="https://github.com/SandyKavalur/clipy-w">GitHub repository</a>
+  </footer>
+</body>
+</html>

@@ -15,7 +15,7 @@ Clipboard history is limited to text. Empty text and clipboard entries larger th
 
 ## Download and Install
 
-On this repository's GitHub page, open **Releases** and download the latest `Clipy-W-Setup-<version>-x64.exe`. Run the installer and follow its prompts. It creates a Start Menu shortcut; no Rust or other development tools are required.
+Download the [Clipy-W v1.0.0 installer](https://github.com/SandyKavalur/clipy-w/releases/tag/v1.0.0) from GitHub Releases. Run `Clipy-W-Setup-1.0.0-x64.exe` and follow the prompts. It creates a Start Menu shortcut; no Rust or other development tools are required.
 
 ## Use Clipy-W
 
