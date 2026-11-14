@@ -1,3 +1,5 @@
+#![cfg_attr(all(not(test), not(debug_assertions)), windows_subsystem = "windows")]
+
 //! Clipy-W — a Clipy-style clipboard manager for Windows.
 //!
 //! Registers a global Ctrl+Shift+H hotkey.  Pressing it pops up a window with
@@ -112,45 +114,19 @@ fn main() -> Result<()> {
 
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, Arc::into_raw(app_state) as _);
 
-        // Prefer Win+Shift+V, falling back to Ctrl+Shift+V if unavailable.
+        // Use Ctrl+Shift+V; test mode uses F9.
         let test_mode = std::env::var_os("CLIPY_W_TEST").is_some();
-        let hotkey_result = if test_mode {
-            RegisterHotKey(
-                Some(hwnd),
-                config::HOTKEY_ID,
-                HOT_KEY_MODIFIERS(0),
-                config::TEST_HOTKEY_VK,
-            )
+        let (modifiers, key) = if test_mode {
+            (HOT_KEY_MODIFIERS(0), config::TEST_HOTKEY_VK)
         } else {
-            match RegisterHotKey(
-                Some(hwnd),
-                config::HOTKEY_ID,
-                MOD_WIN | MOD_SHIFT,
-                config::HOTKEY_VK,
-            ) {
-                Ok(()) => {
-                    log("Win+Shift+V hotkey registered");
-                    Ok(())
-                }
-                Err(error) => {
-                    log(&format!("Win+Shift+V unavailable: {error}; trying Ctrl+Shift+V"));
-                    let fallback = RegisterHotKey(
-                        Some(hwnd),
-                        config::HOTKEY_ID,
-                        MOD_CONTROL | MOD_SHIFT,
-                        config::HOTKEY_VK,
-                    );
-                    if fallback.is_ok() {
-                        log("Ctrl+Shift+V fallback hotkey registered");
-                    }
-                    fallback
-                }
-            }
+            (MOD_CONTROL | MOD_SHIFT, config::HOTKEY_VK)
         };
-        if let Err(e) = hotkey_result {
+        if let Err(e) = RegisterHotKey(Some(hwnd), config::HOTKEY_ID, modifiers, key) {
             log(&format!("RegisterHotKey failed: {:?}", e));
         } else if test_mode {
-            log("hotkey registered");
+            log("F9 test hotkey registered");
+        } else {
+            log("Ctrl+Shift+V hotkey registered");
         }
 
         // Start clipboard monitoring.  The monitor must outlive this match:

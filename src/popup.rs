@@ -25,6 +25,7 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 
 const ERROR_CLASS_ALREADY_EXISTS: u32 = 1410;
 const SNIPPET_TOP_MARGIN: i32 = 8;
+const POPUP_DISMISS_TIMER_ID: usize = 0xC1;
 
 #[derive(Clone, Copy)]
 enum MenuAction {
@@ -32,6 +33,7 @@ enum MenuAction {
     SnippetFolder(usize),
     EditSnippets,
     ToggleStartup,
+    Quit,
 }
 
 struct MenuRow {
@@ -103,6 +105,7 @@ pub unsafe fn show(history: &History, snippets: Arc<Mutex<SnippetStore>>) -> Res
         style: CS_HREDRAW | CS_VREDRAW,
         lpfnWndProc: Some(popup_wndproc),
         hInstance: HINSTANCE(instance.0),
+        hCursor: LoadCursorW(None, IDC_ARROW)?,
         hbrBackground: theme::surface_brush(),
         lpszClassName: class,
         ..Default::default()
@@ -136,6 +139,9 @@ pub unsafe fn show(history: &History, snippets: Arc<Mutex<SnippetStore>>) -> Res
     let _ = ShowWindow(hwnd, SW_SHOW);
     let _ = UpdateWindow(hwnd);
     let _ = SetForegroundWindow(hwnd);
+    let _ = SetActiveWindow(hwnd);
+    let _ = SetFocus(Some(hwnd));
+    let _ = SetTimer(Some(hwnd), POPUP_DISMISS_TIMER_ID, 100, None);
     Ok(())
 }
 
@@ -149,6 +155,10 @@ fn page_bounds(entry_count: usize, page: usize) -> Option<(usize, usize)> {
         return None;
     }
     Some((start, (start + VISIBLE_ITEMS).min(entry_count)))
+}
+
+fn mouse_client_y(lparam: LPARAM) -> i32 {
+    ((lparam.0 >> 16) as u16 as i16) as i32
 }
 
 fn child_header_height(action: Option<MenuAction>) -> i32 {
@@ -201,6 +211,11 @@ fn menu_layout(state: &PopupState) -> MenuLayout {
     top += POPUP_ROW + 4;
     rows.push(MenuRow {
         action: MenuAction::ToggleStartup,
+        top,
+    });
+    top += POPUP_ROW + 4;
+    rows.push(MenuRow {
+        action: MenuAction::Quit,
         top,
     });
     MenuLayout {
@@ -368,11 +383,17 @@ unsafe fn open_child_window(parent: HWND, action: MenuAction) -> Result<()> {
     let _ = ShowWindow(hwnd, SW_SHOW);
     let _ = UpdateWindow(hwnd);
     let _ = SetForegroundWindow(hwnd);
+    let _ = SetActiveWindow(hwnd);
+    let _ = SetFocus(Some(hwnd));
     Ok(())
 }
 
 unsafe fn open_action(parent: HWND, action: MenuAction) {
     match action {
+        MenuAction::Quit => {
+            close_popup_windows();
+            PostQuitMessage(0);
+        }
         MenuAction::ToggleStartup => {
             let enabled = STATE
                 .lock()
@@ -502,7 +523,7 @@ unsafe extern "system" fn popup_wndproc(
             LRESULT(0)
         }
         WM_LBUTTONDOWN => {
-            let y = (lparam.0 as u16) as i32;
+            let y = mouse_client_y(lparam);
             if hwnd.0 as isize == ROOT_WINDOW.load(Ordering::Acquire) {
                 if y < POPUP_HEADER {
                     return LRESULT(0);
@@ -552,6 +573,24 @@ unsafe extern "system" fn popup_wndproc(
             }
             LRESULT(0)
         }
+        WM_KILLFOCUS => {
+            let next = wparam.0 as isize;
+            let root = ROOT_WINDOW.load(Ordering::Acquire);
+            let items = ITEMS_WINDOW.load(Ordering::Acquire);
+            if next != root && next != items {
+                close_popup_windows();
+            }
+            LRESULT(0)
+        }
+        WM_TIMER if wparam.0 == POPUP_DISMISS_TIMER_ID => {
+            let foreground = GetForegroundWindow().0 as isize;
+            let root = ROOT_WINDOW.load(Ordering::Acquire);
+            let items = ITEMS_WINDOW.load(Ordering::Acquire);
+            if foreground != root && foreground != items {
+                close_popup_windows();
+            }
+            LRESULT(0)
+        }
         WM_DESTROY => {
             let value = hwnd.0 as isize;
             let was_root = ROOT_WINDOW
@@ -559,6 +598,7 @@ unsafe extern "system" fn popup_wndproc(
                 .is_ok();
             let _ = ITEMS_WINDOW.compare_exchange(value, 0, Ordering::AcqRel, Ordering::Acquire);
             if was_root {
+                let _ = KillTimer(Some(hwnd), POPUP_DISMISS_TIMER_ID);
                 let items = ITEMS_WINDOW.swap(0, Ordering::AcqRel);
                 if items != 0 {
                     let _ = DestroyWindow(HWND(items as _));
@@ -611,6 +651,11 @@ unsafe fn paint_root(hdc: HDC) {
         .iter()
         .position(|row| matches!(row.action, MenuAction::ToggleStartup))
         .unwrap();
+    let quit_index = layout
+        .rows
+        .iter()
+        .position(|row| matches!(row.action, MenuAction::Quit))
+        .unwrap();
     for index in folder_start..edit_index {
         let row = &layout.rows[index];
         let label = match row.action {
@@ -650,6 +695,16 @@ unsafe fn paint_root(hdc: HDC) {
         startup_row.top,
         startup_index == state.selected_row,
         startup_label,
+        RANGE_WIDTH,
+    );
+
+    let quit_row = &layout.rows[quit_index];
+    draw_separator(hdc, quit_row.top - 5, RANGE_WIDTH);
+    draw_row(
+        hdc,
+        quit_row.top,
+        quit_index == state.selected_row,
+        "Quit Clipy-W",
         RANGE_WIDTH,
     );
 }
@@ -777,6 +832,9 @@ unsafe fn choose_item(index: usize) {
 unsafe fn close_popup_windows() {
     let items = ITEMS_WINDOW.swap(0, Ordering::AcqRel);
     let root = ROOT_WINDOW.swap(0, Ordering::AcqRel);
+    if root != 0 {
+        let _ = KillTimer(Some(HWND(root as _)), POPUP_DISMISS_TIMER_ID);
+    }
     for value in [items, root] {
         if value != 0 {
             let hwnd = HWND(value as _);
@@ -863,7 +921,10 @@ fn wide(text: &str) -> PCWSTR {
 
 #[cfg(test)]
 mod tests {
-    use super::{child_content_top, child_header_height, page_bounds, page_count, MenuAction};
+    use windows::Win32::Foundation::LPARAM;
+    use super::{
+        child_content_top, child_header_height, mouse_client_y, page_bounds, page_count, MenuAction,
+    };
 
     #[test]
     fn full_history_splits_into_three_groups() {
@@ -892,5 +953,14 @@ mod tests {
             child_content_top(Some(MenuAction::HistoryPage(0))),
             crate::config::POPUP_HEADER
         );
+    }
+
+    #[test]
+    fn mouse_click_y_is_read_from_the_high_word() {
+        let packed = (73u32 << 16) | 19u32;
+        assert_eq!(mouse_client_y(LPARAM(packed as isize)), 73);
+
+        let packed = ((-3i16 as u16 as u32) << 16) | 19u32;
+        assert_eq!(mouse_client_y(LPARAM(packed as isize)), -3);
     }
 }

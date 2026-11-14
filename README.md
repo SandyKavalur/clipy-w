@@ -9,7 +9,6 @@ Clipy-W is a Windows clipboard manager written in Rust. It keeps a local history
 - Promotes repeated text instead of storing duplicate history entries.
 - Lets you create snippet folders and add, edit, rename, or delete snippets.
 - Can start automatically when the current Windows user signs in.
-- Copies a selected history item or snippet to the clipboard and sends `Ctrl+V` to paste it into the previously active app.
 
 Clipboard history is limited to text. Empty text and clipboard entries larger than 100 KB are ignored.
 
@@ -21,7 +20,7 @@ Visit the [Clipy-W project site](https://sandykavalur.github.io/clipy-w/) for an
 
 ## Use Clipy-W
 
-Press `Win+Shift+V` to open the picker. If Windows cannot register that shortcut, Clipy-W falls back to `Ctrl+Shift+V`. The active shortcut is printed when debug logging is enabled.
+Press `Ctrl+Shift+V` to open the picker. The development test mode uses `F9` when `CLIPY_W_TEST=1` is set.
 
 Choose a history range to open its entries beside the picker. Choose a snippet folder to open its snippets. Selecting an item copies it and attempts to paste it into the app that had focus before the picker opened.
 
@@ -71,4 +70,4 @@ Clipy-W stores data in the current Windows user's application data folder:
 
 ## Stop Clipy-W
 
-Clipy-W currently runs in the background without a system-tray menu or in-app quit command. Stop a foreground development run with `Ctrl+C` in its terminal, or close the `clipy-w` process from Task Manager.
+Choose **Quit Clipy-W** at the bottom of the main popup to exit the app. A debug run started with `cargo run` can also be stopped with `Ctrl+C` in its terminal. Release builds run without a terminal window.

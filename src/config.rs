@@ -8,7 +8,7 @@ pub const APP_NAME: &str = "Clipy-W";
 
 pub const HOTKEY_ID: i32 = 1;
 
-/// Primary hotkey: Win + Shift + V.
+/// Hotkey key code for Ctrl + Shift + V.
 pub const HOTKEY_VK: u32 = 0x56; // 'V'
 
 /// Virtual-key code of the test hotkey (F9), used when `CLIPY_W_TEST=1` is

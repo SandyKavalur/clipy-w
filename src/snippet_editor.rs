@@ -26,6 +26,7 @@ const TITLE_EDIT: u16 = 109;
 const TEXT_EDIT: u16 = 110;
 const SAVE_SNIPPET: u16 = 111;
 const STATUS_TEXT: u16 = 112;
+const STATUS_PREVIOUS: u16 = 113;
 
 const CBN_SELCHANGE: usize = 1;
 const CB_ADDSTRING: u32 = 0x0143;
@@ -40,6 +41,7 @@ struct Controls {
     title: isize,
     text: isize,
     status: isize,
+    status_previous: isize,
 }
 
 struct EditorState {
@@ -75,6 +77,7 @@ pub unsafe fn show(store: Arc<Mutex<SnippetStore>>) -> Result<()> {
     let wc = WNDCLASSW {
         lpfnWndProc: Some(editor_wndproc),
         hInstance: HINSTANCE(instance.0),
+        hCursor: LoadCursorW(None, IDC_ARROW)?,
         hbrBackground: theme::background_brush(),
         lpszClassName: PCWSTR(class_name.as_ptr()),
         ..Default::default()
@@ -115,7 +118,7 @@ unsafe extern "system" fn editor_wndproc(
     hwnd: HWND,
     msg: u32,
     wparam: WPARAM,
-    _lparam: LPARAM,
+    lparam: LPARAM,
 ) -> LRESULT {
     match msg {
         WM_CREATE => {
@@ -138,7 +141,7 @@ unsafe extern "system" fn editor_wndproc(
             }
             LRESULT(0)
         }
-        WM_DRAWITEM => draw_button(_lparam),
+        WM_DRAWITEM => draw_button(lparam),
         WM_ERASEBKGND => {
             let hdc = HDC(wparam.0 as _);
             let mut rect = RECT::default();
@@ -150,6 +153,12 @@ unsafe extern "system" fn editor_wndproc(
         WM_CTLCOLORSTATIC => {
             let hdc = HDC(wparam.0 as _);
             SetTextColor(hdc, theme::MUTED_TEXT);
+            let control_id = GetDlgCtrlID(HWND(lparam.0 as _));
+            if control_id == STATUS_TEXT as i32 || control_id == STATUS_PREVIOUS as i32 {
+                SetBkMode(hdc, OPAQUE);
+                SetBkColor(hdc, theme::BACKGROUND);
+                return LRESULT(theme::background_brush().0 as isize);
+            }
             SetBkMode(hdc, TRANSPARENT);
             let brush = if theme::glass_enabled() {
                 HBRUSH(GetStockObject(NULL_BRUSH).0)
@@ -174,7 +183,7 @@ unsafe extern "system" fn editor_wndproc(
             *EDITOR_STATE.lock().unwrap() = None;
             LRESULT(0)
         }
-        _ => DefWindowProcW(hwnd, msg, wparam, _lparam),
+        _ => DefWindowProcW(hwnd, msg, wparam, lparam),
     }
 }
 
@@ -255,7 +264,19 @@ unsafe fn create_controls(parent: HWND) {
         190,
         TEXT_EDIT,
     );
-    let status = create_control(parent, instance, "STATIC", "", common, 16, 448, 520, 24, STATUS_TEXT);
+    let status = create_control(parent, instance, "STATIC", "", common, 16, 442, 520, 20, STATUS_TEXT);
+    let status_previous = create_control(
+        parent,
+        instance,
+        "STATIC",
+        "",
+        common,
+        16,
+        464,
+        520,
+        20,
+        STATUS_PREVIOUS,
+    );
     create_control(parent, instance, "BUTTON", "Save snippet", common, 600, 444, 124, 32, SAVE_SNIPPET);
 
     let mut state = EDITOR_STATE.lock().unwrap();
@@ -269,6 +290,7 @@ unsafe fn create_controls(parent: HWND) {
         title: title.0 as isize,
         text: text.0 as isize,
         status: status.0 as isize,
+        status_previous: status_previous.0 as isize,
     });
     let folder_count = state.store.lock().unwrap().folders.len();
     state.selected_folder = (folder_count > 0).then_some(0);
@@ -466,6 +488,14 @@ unsafe fn load_selected(state: &EditorState) {
 }
 
 unsafe fn save_selected(state: &mut EditorState) -> bool {
+    save_selected_with_status(state, true)
+}
+
+unsafe fn save_selected_quietly(state: &mut EditorState) -> bool {
+    save_selected_with_status(state, false)
+}
+
+unsafe fn save_selected_with_status(state: &mut EditorState, show_saved: bool) -> bool {
     let (Some(folder_index), Some(snippet_index), Some(controls)) = (
         state.selected_folder,
         state.selected_snippet,
@@ -495,7 +525,9 @@ unsafe fn save_selected(state: &mut EditorState) -> bool {
             return false;
         }
     }
-    set_status(state, "Snippet saved.");
+    if show_saved {
+        set_status(state, "Snippet saved.");
+    }
     true
 }
 
@@ -650,7 +682,8 @@ unsafe fn add_snippet() {
     let Some(state) = guard.as_mut() else {
         return;
     };
-    if !save_selected(state) {
+    set_status(state, "");
+    if !save_selected_quietly(state) {
         return;
     }
     let Some(folder) = state.selected_folder else {
@@ -717,7 +750,18 @@ unsafe fn save_selected_snippet() {
 
 unsafe fn set_status(state: &EditorState, message: &str) {
     if let Some(controls) = &state.controls {
-        set_text(control(controls.status), message);
+        let current = control(controls.status);
+        let previous = control(controls.status_previous);
+        if message.is_empty() {
+            set_text(current, "");
+            set_text(previous, "");
+            return;
+        }
+        let current_message = get_text(current);
+        if !current_message.is_empty() && current_message != message {
+            set_text(previous, &current_message);
+        }
+        set_text(current, message);
     }
 }
 
