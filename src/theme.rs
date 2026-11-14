@@ -2,9 +2,11 @@
 
 use once_cell::sync::Lazy;
 use std::sync::atomic::{AtomicBool, Ordering};
+use windows::core::{s, w};
 use windows::Win32::Foundation::{BOOL, COLORREF, HWND};
 use windows::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_USE_IMMERSIVE_DARK_MODE};
 use windows::Win32::Graphics::Gdi::*;
+use windows::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
 
 #[repr(C)]
 struct AccentPolicy {
@@ -21,13 +23,8 @@ struct WindowCompositionAttributeData {
     size: usize,
 }
 
-#[link(name = "user32")]
-extern "system" {
-    fn SetWindowCompositionAttribute(
-        hwnd: HWND,
-        data: *mut WindowCompositionAttributeData,
-    ) -> BOOL;
-}
+type SetWindowCompositionAttributeFn =
+    unsafe extern "system" fn(HWND, *mut WindowCompositionAttributeData) -> BOOL;
 
 pub const BACKGROUND: COLORREF = rgb(31, 32, 36);
 pub const SURFACE: COLORREF = rgb(40, 42, 47);
@@ -66,7 +63,14 @@ pub fn apply_backdrop(hwnd: HWND) -> bool {
             data: &mut policy as *mut _ as _,
             size: std::mem::size_of::<AccentPolicy>(),
         };
-        let enabled = SetWindowCompositionAttribute(hwnd, &mut data).as_bool();
+        let enabled = GetModuleHandleW(w!("user32.dll"))
+            .ok()
+            .and_then(|module| GetProcAddress(module, s!("SetWindowCompositionAttribute")))
+            .map(|function| {
+                let function: SetWindowCompositionAttributeFn = std::mem::transmute(function);
+                function(hwnd, &mut data).as_bool()
+            })
+            .unwrap_or(false);
         GLASS_ENABLED.store(enabled, Ordering::Release);
         enabled
     }
