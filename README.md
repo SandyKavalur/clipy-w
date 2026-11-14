@@ -10,7 +10,7 @@ Clipy-W is a Windows clipboard manager written in Rust. It keeps a local history
 - Lets you create snippet folders and add, edit, rename, or delete snippets.
 - Can start automatically when the current Windows user signs in.
 
-Clipboard history is limited to text. Empty text and clipboard entries larger than 100 KB are ignored.
+Clipboard history preserves Unicode text and supported rich formats, including HTML, RTF, DIB images, and registered PNG/JPEG/GIF/TIFF/HEIC formats. Empty clipboard entries and items larger than 20 MiB are ignored. Snippets remain plain text.
 
 ## Download and Install
 

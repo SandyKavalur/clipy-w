@@ -193,17 +193,16 @@ unsafe fn create_controls(parent: HWND) {
     };
     let instance = HINSTANCE(module.0);
     let common = WS_CHILD | WS_VISIBLE;
-    create_control(parent, instance, "STATIC", "Folder", common, 16, 14, 100, 20, 0);
+    create_control(
+        parent, instance, "STATIC", "Folder", common, Rect { x: 16, y: 14, width: 100, height: 20 }, 0,
+    );
     let folders = create_control(
         parent,
         instance,
         "COMBOBOX",
         "",
         WINDOW_STYLE(common.0 | 0x0003 | WS_VSCROLL.0),
-        16,
-        36,
-        210,
-        240,
+        Rect { x: 16, y: 36, width: 210, height: 240 },
         FOLDER_COMBO,
     );
     let folder_name = create_control(
@@ -212,72 +211,77 @@ unsafe fn create_controls(parent: HWND) {
         "EDIT",
         "",
         WINDOW_STYLE(common.0 | WS_BORDER.0 | 0x0080),
-        240,
-        36,
-        210,
-        26,
+        Rect { x: 240, y: 36, width: 210, height: 26 },
         FOLDER_NAME,
     );
-    create_control(parent, instance, "BUTTON", "Add", common, 462, 36, 80, 28, ADD_FOLDER);
-    create_control(parent, instance, "BUTTON", "Rename", common, 548, 36, 82, 28, RENAME_FOLDER);
-    create_control(parent, instance, "BUTTON", "Delete", common, 636, 36, 88, 28, DELETE_FOLDER);
+    create_control(
+        parent, instance, "BUTTON", "Add", common, Rect { x: 462, y: 36, width: 80, height: 28 }, ADD_FOLDER,
+    );
+    create_control(
+        parent, instance, "BUTTON", "Rename", common, Rect { x: 548, y: 36, width: 82, height: 28 }, RENAME_FOLDER,
+    );
+    create_control(
+        parent, instance, "BUTTON", "Delete", common, Rect { x: 636, y: 36, width: 88, height: 28 }, DELETE_FOLDER,
+    );
 
-    create_control(parent, instance, "STATIC", "Snippet", common, 16, 82, 100, 20, 0);
+    create_control(
+        parent, instance, "STATIC", "Snippet", common, Rect { x: 16, y: 82, width: 100, height: 20 }, 0,
+    );
     let snippets = create_control(
         parent,
         instance,
         "COMBOBOX",
         "",
         WINDOW_STYLE(common.0 | 0x0003 | WS_VSCROLL.0),
-        16,
-        104,
-        320,
-        240,
+        Rect { x: 16, y: 104, width: 320, height: 240 },
         SNIPPET_COMBO,
     );
-    create_control(parent, instance, "BUTTON", "Add new snippet", common, 350, 104, 120, 28, ADD_SNIPPET);
-    create_control(parent, instance, "BUTTON", "Delete snippet", common, 478, 104, 140, 28, DELETE_SNIPPET);
+    create_control(
+        parent, instance, "BUTTON", "Add new snippet", common, Rect { x: 350, y: 104, width: 120, height: 28 }, ADD_SNIPPET,
+    );
+    create_control(
+        parent, instance, "BUTTON", "Delete snippet", common, Rect { x: 478, y: 104, width: 140, height: 28 }, DELETE_SNIPPET,
+    );
 
-    create_control(parent, instance, "STATIC", "Title", common, 16, 154, 80, 20, 0);
+    create_control(
+        parent, instance, "STATIC", "Title", common, Rect { x: 16, y: 154, width: 80, height: 20 }, 0,
+    );
     let title = create_control(
         parent,
         instance,
         "EDIT",
         "",
         WINDOW_STYLE(common.0 | WS_BORDER.0 | 0x0080),
-        16,
-        176,
-        708,
-        28,
+        Rect { x: 16, y: 176, width: 708, height: 28 },
         TITLE_EDIT,
     );
-    create_control(parent, instance, "STATIC", "Text", common, 16, 220, 80, 20, 0);
+    create_control(
+        parent, instance, "STATIC", "Text", common, Rect { x: 16, y: 220, width: 80, height: 20 }, 0,
+    );
     let text = create_control(
         parent,
         instance,
         "EDIT",
         "",
         WINDOW_STYLE(common.0 | WS_BORDER.0 | WS_VSCROLL.0 | 0x0004 | 0x0040 | 0x1000),
-        16,
-        242,
-        708,
-        190,
+        Rect { x: 16, y: 242, width: 708, height: 190 },
         TEXT_EDIT,
     );
-    let status = create_control(parent, instance, "STATIC", "", common, 16, 442, 520, 20, STATUS_TEXT);
+    let status = create_control(
+        parent, instance, "STATIC", "", common, Rect { x: 16, y: 442, width: 520, height: 20 }, STATUS_TEXT,
+    );
     let status_previous = create_control(
         parent,
         instance,
         "STATIC",
         "",
         common,
-        16,
-        464,
-        520,
-        20,
+        Rect { x: 16, y: 464, width: 520, height: 20 },
         STATUS_PREVIOUS,
     );
-    create_control(parent, instance, "BUTTON", "Save snippet", common, 600, 444, 124, 32, SAVE_SNIPPET);
+    create_control(
+        parent, instance, "BUTTON", "Save snippet", common, Rect { x: 600, y: 444, width: 124, height: 32 }, SAVE_SNIPPET,
+    );
 
     let mut state = EDITOR_STATE.lock().unwrap();
     let Some(state) = state.as_mut() else {
@@ -300,18 +304,24 @@ unsafe fn create_controls(parent: HWND) {
     load_selected(state);
 }
 
+/// Layout of a child control: position and size in parent-client pixels.
+struct Rect {
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+}
+
 unsafe fn create_control(
     parent: HWND,
     instance: HINSTANCE,
     class: &str,
     text: &str,
     style: WINDOW_STYLE,
-    x: i32,
-    y: i32,
-    width: i32,
-    height: i32,
+    rect: Rect,
     id: u16,
 ) -> HWND {
+    let Rect { x, y, width, height } = rect;
     let is_button = class == "BUTTON";
     let class = wide_null(class);
     let text = wide_null(text);

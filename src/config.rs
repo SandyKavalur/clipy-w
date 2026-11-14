@@ -23,8 +23,8 @@ pub const MAX_STORED: usize = 30;
 /// Number of items shown in the popup window.
 pub const VISIBLE_ITEMS: usize = 10;
 
-/// Ignore clipboard content larger than this (bytes) to avoid memory bloat.
-pub const MAX_ITEM_BYTES: usize = 100 * 1024;
+/// Maximum total size of clipboard formats retained for one history item.
+pub const MAX_ITEM_BYTES: usize = 20 * 1024 * 1024;
 
 /// When an item is chosen, automatically simulate Ctrl+V to paste it.
 pub const AUTO_PASTE: bool = true;

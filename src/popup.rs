@@ -1,10 +1,11 @@
 //! Root menu and adjacent item window for clipboard history and snippets.
 
+use crate::clipboard;
 use crate::config::{
     popup_height, AUTO_PASTE, MAX_STORED, POPUP_HEADER, POPUP_ROW, POPUP_WIDTH, RANGE_WIDTH,
     VISIBLE_ITEMS,
 };
-use crate::history::{Entry, History};
+use crate::history::{ClipboardPayload, Entry, History};
 use crate::snippet_editor;
 use crate::snippets::SnippetStore;
 use crate::startup;
@@ -34,6 +35,11 @@ enum MenuAction {
     EditSnippets,
     ToggleStartup,
     Quit,
+}
+
+enum SelectedContent {
+    Clipboard(ClipboardPayload),
+    Text(String),
 }
 
 struct MenuRow {
@@ -565,7 +571,7 @@ unsafe extern "system" fn popup_wndproc(
             LRESULT(0)
         }
         WM_ACTIVATE if (wparam.0 & 0xffff) == WA_INACTIVE as usize => {
-            let activated = lparam.0 as isize;
+            let activated = lparam.0;
             let root = ROOT_WINDOW.load(Ordering::Acquire);
             let items = ITEMS_WINDOW.load(Ordering::Acquire);
             if activated != root && activated != items {
@@ -656,8 +662,8 @@ unsafe fn paint_root(hdc: HDC) {
         .iter()
         .position(|row| matches!(row.action, MenuAction::Quit))
         .unwrap();
-    for index in folder_start..edit_index {
-        let row = &layout.rows[index];
+    for (offset, row) in layout.rows[folder_start..edit_index].iter().enumerate() {
+        let index = folder_start + offset;
         let label = match row.action {
             MenuAction::SnippetFolder(folder) => state
                 .snippets
@@ -802,11 +808,14 @@ unsafe fn round_window(hwnd: HWND, width: i32, height: i32) {
 }
 
 unsafe fn choose_item(index: usize) {
-    let text = STATE.lock().unwrap().as_ref().and_then(|state| {
+    let selected = STATE.lock().unwrap().as_ref().and_then(|state| {
         match state.child {
             Some(MenuAction::HistoryPage(page)) => {
-                let (start, end) = page_bounds(state.entries.len(), page)?;
-                (index < end - start).then(|| state.entries[start + index].text.clone())
+                page_bounds(state.entries.len(), page).and_then(|(start, end)| {
+                    (index < end - start).then(|| {
+                        SelectedContent::Clipboard(state.entries[start + index].payload.clone())
+                    })
+                })
             }
             Some(MenuAction::SnippetFolder(folder)) => state
                 .snippets
@@ -815,13 +824,20 @@ unsafe fn choose_item(index: usize) {
                 .folders
                 .get(folder)
                 .and_then(|folder| folder.snippets.get(index))
-                .map(|snippet| snippet.text.clone()),
+                .map(|snippet| SelectedContent::Text(snippet.text.clone())),
             _ => None,
         }
     });
     close_popup_windows();
-    if let Some(text) = text {
-        set_clipboard_text(&text);
+    if let Some(selected) = selected {
+        match selected {
+            SelectedContent::Clipboard(payload) => {
+                if !clipboard::set_clipboard_payload(&payload) {
+                    eprintln!("[Clipy-W] could not restore clipboard item; pasting may fail");
+                }
+            }
+            SelectedContent::Text(text) => set_clipboard_text(&text),
+        }
         if AUTO_PASTE {
             std::thread::sleep(Duration::from_millis(80));
             simulate_ctrl_v();
