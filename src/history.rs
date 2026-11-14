@@ -217,7 +217,7 @@ mod tests {
     #[test]
     fn trim_to_limit_keeps_newest() {
         let h = temp_history();
-        // MAX_STORED is 100; insert far more.
+        // Insert more than the configured storage limit.
         for i in 0..(MAX_STORED + 50) {
             h.push(&format!("n-{}", i));
         }

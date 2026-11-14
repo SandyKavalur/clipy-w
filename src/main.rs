@@ -9,14 +9,22 @@ mod clipboard;
 mod config;
 mod history;
 mod popup;
+mod snippet_editor;
+mod snippets;
+mod theme;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use windows::core::*;
 use windows::Win32::Foundation::*;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::CreateMutexW;
 use windows::Win32::UI::Input::KeyboardAndMouse::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
+
+struct AppState {
+    history: Arc<history::History>,
+    snippets: Arc<Mutex<snippets::SnippetStore>>,
+}
 
 fn main() -> Result<()> {
     let debug = std::env::var_os("CLIPYRS_DEBUG").is_some();
@@ -44,6 +52,17 @@ fn main() -> Result<()> {
         }
     };
     log("history opened");
+    let snippets = match snippets::SnippetStore::load() {
+        Ok(store) => Arc::new(Mutex::new(store)),
+        Err(error) => {
+            eprintln!("[clipyrs] failed to load snippets: {error}");
+            Arc::new(Mutex::new(snippets::SnippetStore::default()))
+        }
+    };
+    let app_state = Arc::new(AppState {
+        history: history.clone(),
+        snippets: snippets.clone(),
+    });
 
     unsafe {
         let instance = GetModuleHandleW(None)?;
@@ -76,12 +95,7 @@ fn main() -> Result<()> {
         }
         log("main window created");
 
-        // Stash the Arc<History> so the wndproc can reach it.
-        SetWindowLongPtrW(
-            hwnd,
-            GWLP_USERDATA,
-            Arc::into_raw(history.clone()) as _,
-        );
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, Arc::into_raw(app_state) as _);
 
         // Ctrl + Shift + H (test mode: F12).
         let test_mode = std::env::var_os("CLIPYRS_TEST").is_some();
@@ -109,7 +123,7 @@ fn main() -> Result<()> {
         // global hotkey.  Lets the UI be exercised headlessly.
         if std::env::var_os("CLIPYRS_SHOW").is_some() {
             log("manual show requested");
-            let _ = popup::show(&history);
+            let _ = popup::show(&history, snippets.clone());
             log("popup closed, exiting");
             let _ = UnregisterHotKey(Some(hwnd), config::HOTKEY_ID);
             return Ok(());
@@ -148,10 +162,10 @@ unsafe extern "system" fn main_wndproc(
             if std::env::var_os("CLIPYRS_DEBUG").is_some() {
                 eprintln!("[clipyrs] WM_HOTKEY received");
             }
-            let ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *const history::History;
+            let ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *const AppState;
             if !ptr.is_null() {
-                let history = &*ptr;
-                if let Err(error) = popup::show(history) {
+                let state = &*ptr;
+                if let Err(error) = popup::show(&state.history, state.snippets.clone()) {
                     eprintln!("[clipyrs] failed to show popup: {error}");
                 }
             }
